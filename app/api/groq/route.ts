@@ -1,52 +1,43 @@
-// /api/groq.js - Vercel Edge Function
-export const config = {
-  runtime: 'edge',
+// /app/api/groq/route.ts - Next.js App Router
+import { NextRequest, NextResponse } from 'next/server';
+
+export const runtime = 'edge';
+
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-export default async function handler(request) {
-  // CORS headers
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
 
-  // Handle OPTIONS request (CORS preflight)
-  if (request.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
-  }
-
-  // Only allow POST
-  if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-
+export async function POST(request: NextRequest) {
   try {
     // Get API key from environment variable
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
     
-    // Debug için (PRODUCTION'DA KALDIRILMALI!)
+    // Debug için (PRODUCTION'DA KALDIR!)
     console.log('API Key exists:', !!GROQ_API_KEY);
-    console.log('API Key prefix:', GROQ_API_KEY?.substring(0, 7));
+    console.log('API Key starts with:', GROQ_API_KEY?.substring(0, 4));
     
     if (!GROQ_API_KEY) {
-      return new Response(
-        JSON.stringify({ 
+      return NextResponse.json(
+        { 
           error: { 
             message: 'Server configuration error: API key not found',
             type: 'server_error',
             code: 'missing_api_key'
           } 
-        }),
-        {
+        },
+        { 
           status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: corsHeaders 
         }
       );
     }
@@ -66,70 +57,70 @@ export default async function handler(request) {
         messages: requestBody.messages,
         temperature: requestBody.temperature || 0.7,
         max_tokens: requestBody.max_tokens || 1024,
-        stream: false, // Flutter'da stream kullanmıyoruz
+        stream: false,
       }),
     });
 
-    // Get response text first
+    // Get response as text first
     const responseText = await groqResponse.text();
     
-    // Debug response
-    console.log('Groq API Status:', groqResponse.status);
-    console.log('Groq API Response:', responseText.substring(0, 200));
-
+    // Debug
+    console.log('Groq Status:', groqResponse.status);
+    
     // Parse response
     let responseData;
     try {
       responseData = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('Parse error:', parseError);
-      return new Response(
-        JSON.stringify({ 
+    } catch (e) {
+      console.error('Parse error:', e);
+      return NextResponse.json(
+        { 
           error: { 
             message: 'Invalid response from Groq API',
-            type: 'api_error',
-            details: responseText
+            type: 'parse_error',
+            details: responseText.substring(0, 200)
           } 
-        }),
-        {
+        },
+        { 
           status: 502,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: corsHeaders 
         }
       );
     }
 
-    // Check for Groq API errors
+    // Check for errors
     if (!groqResponse.ok) {
-      return new Response(
-        JSON.stringify(responseData),
-        {
+      console.error('Groq API error:', responseData);
+      return NextResponse.json(
+        responseData,
+        { 
           status: groqResponse.status,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          headers: corsHeaders 
         }
       );
     }
 
-    // Return successful response
-    return new Response(
-      JSON.stringify(responseData),
-      {
+    // Return success response
+    return NextResponse.json(
+      responseData,
+      { 
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: corsHeaders 
       }
     );
 
-  } catch (error) {
-    console.error('Error in Groq proxy:', error);
-    return new Response(
-      JSON.stringify({ 
+  } catch (error: any) {
+    console.error('Proxy error:', error);
+    return NextResponse.json(
+      { 
         error: { 
           message: error.message || 'Internal server error',
           type: 'server_error'
         } 
-      }),
-      {
+      },
+      { 
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: corsHeaders 
       }
     );
   }
